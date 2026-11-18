@@ -1,94 +1,140 @@
 import json
 import html
+import os
 import urllib.request
 import urllib.parse
 import xmltodict
 import pandas as pd
 
+from Document import Document
+from datetime import datetime
+
 ### Partie 1 : chargement des données
 
 # la thématique choisie, à modifier librement
 theme = "climate"
-docs = []
-origines = []
+id2doc = {}
+next_id = 0
 
-# 1.1
-# On construit l'adresse avec urlencode pour que les caractères spéciaux
-# (espaces, accents...) soient correctement encodés.
-url_hn = "https://hn.algolia.com/api/v1/search?" + urllib.parse.urlencode(
-    {"query": theme, "tags": "story", "hitsPerPage": 50})
-print(url_hn)
+if os.path.exists("corpus.csv"):
+    df = pd.read_csv("corpus.csv", sep="\t")
+    for _, ligne in df.iterrows():
+        document = Document(
+            title="",
+            author="Auteur inconnu",
+            date="",
+            url="",
+            text=str(ligne["texte"]),
+        )
+        id2doc[next_id] = document
+        next_id += 1
+else:
+    # Partie 1.1 : récupération des données Hacker News
+    url_hn = "https://hn.algolia.com/api/v1/search?" + urllib.parse.urlencode({
+        "query": theme,
+        "tags": "story",
+        "hitsPerPage": 50,
+    })
 
-with urllib.request.urlopen(url_hn) as reponse:
-    d_hn = json.load(reponse)
+    with urllib.request.urlopen(url_hn) as reponse:
+        d_hn = json.load(reponse)
 
-print(d_hn.keys())           # hits, nbHits, page, nbPages, hitsPerPage...
-print(d_hn["nbHits"])        # nombre total de documents trouvés par le moteur
-hits = d_hn["hits"]
-print(len(hits))             # 50 : ce que l'API nous a effectivement renvoyé
-print(hits[0].keys())        # les champs disponibles pour un document
+    for hit in d_hn["hits"]:
+        texte = hit.get("story_text")
 
-# Le champ contenant le contenu textuel est story_text. Il est absent des
-# documents qui ne pointent que vers un lien extérieur : dans ce cas on se
-# rabat sur le titre (champ title), toujours présent.
-for hit in hits:
-    texte = hit.get("story_text")
-    if not texte:
-        texte = hit.get("title", "")
-    # le texte contient du HTML : <p> pour les paragraphes et des caractères
-    # échappés comme &#x27; pour l'apostrophe
-    texte = html.unescape(texte).replace("<p>", " ").strip()
-    docs.append(texte)
-    origines.append("hackernews")
+        if not texte:
+            texte = hit.get("title", "")
 
-print("Documents Hacker News :", len(docs))
+        texte = html.unescape(texte).replace("<p>", " ").strip()
 
-# 1.2
-url_arxiv = "http://export.arxiv.org/api/query?" + urllib.parse.urlencode(
-    {"search_query": "all:" + theme, "start": 0, "max_results": 50})
-print(url_arxiv)
+        titre = hit.get("title", "")
+        auteur = hit.get("author", "Auteur inconnu")
+        date = hit.get("created_at", "")
+        url = hit.get("story_url") or hit.get("url") or ""
 
-with urllib.request.urlopen(url_arxiv) as reponse:
-    d_arxiv = xmltodict.parse(reponse.read())
+        document = Document(
+            titre,
+            auteur,
+            date,
+            url,
+            texte,
+        )
 
-print(d_arxiv.keys())                # feed : la racine du document XML
-print(d_arxiv["feed"].keys())        # title, id, updated, entry...
+        id2doc[next_id] = document
+        next_id += 1
 
-# Attention : s'il n'y a qu'un seul résultat, xmltodict renvoie un simple
-# dictionnaire et non une liste ; s'il n'y en a aucun, la clef entry est absente.
-entrees = d_arxiv["feed"].get("entry", [])
-if isinstance(entrees, dict):
-    entrees = [entrees]
-print(len(entrees))
-print(entrees[0].keys())             # les champs disponibles pour un article
+    # Partie 1.2 : récupération des données Arxiv
+    url_arxiv = "http://export.arxiv.org/api/query?" + urllib.parse.urlencode({
+        "search_query": "all:" + theme,
+        "start": 0,
+        "max_results": 50,
+    })
 
-# Le champ contenant le contenu textuel est summary (le résumé de l'article).
-for entree in entrees:
-    texte = entree["summary"].replace("\n", " ").strip()
-    docs.append(texte)
-    origines.append("arxiv")
+    with urllib.request.urlopen(url_arxiv) as reponse:
+        d_arxiv = xmltodict.parse(reponse.read())
 
-print("Taille du corpus :", len(docs))
+    entrees = d_arxiv["feed"].get("entry", [])
+    if isinstance(entrees, dict):
+        entrees = [entrees]
+
+    for entree in entrees:
+        titre = entree.get("title", "").replace("\n", " ").strip()
+        texte = entree.get("summary", "").replace("\n", " ").strip()
+        date = entree.get("published", "")
+        url = entree.get("id", "")
+        auteur_xml = entree.get("author", "")
+        if isinstance(auteur_xml, list):
+            auteur = ", ".join(
+                str(a.get("name", ""))
+                for a in auteur_xml
+                if isinstance(a, dict)
+            )
+        elif isinstance(auteur_xml, dict):
+            auteur = auteur_xml.get("name", "Auteur inconnu")
+        else:
+            auteur = str(auteur_xml or "Auteur inconnu")
+        document = Document(
+            titre,
+            auteur,
+            date,
+            url,
+            texte,
+        )
+        id2doc[next_id] = document
+        next_id += 1
 
 
-### Partie 2 : sauvegarde des données
+    ### Partie 2 : sauvegarde des données
 
-# 2.1
-df = pd.DataFrame({"id": range(len(docs)),
-                   "texte": docs,
-                   "origine": origines})
-print(df.shape)
-print(df.head())
-print(df["origine"].value_counts())
+    # 2.1
+    donnees = []
 
-# 2.2
-# On a pris soin de retirer les sauts de ligne des textes : sans cela, ils
-# casseraient le fichier csv, qui sépare ses lignes avec ce même caractère.
-df.to_csv("corpus.csv", sep="\t", index=False)
+    for identifiant, document in id2doc.items():
+        donnees.append({
+            "id": identifiant,
+            "titre": document.title,
+            "auteur": document.author,
+            "date": document.date,
+            "url": document.url,
+            "texte": document.text,
+        })
 
-# 2.3
-df = pd.read_csv("corpus.csv", sep="\t")
-print(df.shape)
+    df = pd.DataFrame(donnees)
+    print(df.shape)
+    print(df.head())
+    df.to_csv("corpus.csv", sep="\t", index=False)
+    print(df.shape)
+    print(df.head())
+    print(df.columns)
+
+    # 2.2
+    # On a pris soin de retirer les sauts de ligne des textes : sans cela, ils
+    # casseraient le fichier csv, qui sépare ses lignes avec ce même caractère.
+    df.to_csv("corpus.csv", sep="\t", index=False)
+
+    # 2.3
+    df = pd.read_csv("corpus.csv", sep="\t")
+    print(df.shape)
 # En pratique, on encadre la partie 1 par un test de la forme :
 #     import os
 #     if os.path.exists("corpus.csv"):
@@ -101,10 +147,16 @@ print(df.shape)
 ### Partie 3 : premières manipulations des données
 
 # 3.1
-print("Nombre de documents :", len(df))
+print("Nombre de documents :", len(id2doc))
+
+premier_document = id2doc[0]
+premier_document.display()
+
+print(premier_document)
 
 # 3.2
-for texte in df["texte"]:
+for document in id2doc.values():
+    texte = document.text
     mots = texte.split(" ")
     phrases = texte.split(".")
     print(len(mots), "mots,", len(phrases), "phrases")
@@ -112,11 +164,14 @@ for texte in df["texte"]:
 # 3.3
 # Les documents les plus courts sont les titres récupérés sur Hacker News
 # lorsque le champ story_text était absent.
-print("Avant filtrage :", len(df))
-df = df[df["texte"].str.len() >= 20]
-print("Après filtrage :", len(df))
+id2doc = {
+    identifiant: document
+    for identifiant, document in id2doc.items()
+    if len(document.text) >= 20
+}
 
 # 3.4
-chaine = " ".join(df["texte"])
-print(len(chaine))
-print(chaine[:500])
+chaine = " ".join(
+    document.text
+    for document in id2doc.values()
+)
