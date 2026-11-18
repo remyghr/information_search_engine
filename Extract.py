@@ -9,6 +9,7 @@ import pandas as pd
 from Document import Document
 from datetime import datetime
 from Author import Author
+from Corpus import Corpus
 
 ### Partie 1 : chargement des données
 
@@ -200,6 +201,28 @@ chaine = " ".join(
     document.text
     for document in id2doc.values()
 )
+
+# Creation du corpus
+
+corpus = Corpus("Climate")
+
+corpus.id2doc = id2doc
+corpus.authors = id2aut
+corpus.ndoc = len(id2doc)
+corpus.naut = len(id2aut)
+print(corpus)
+corpus.display()
+corpus.save("corpus.csv")
+
+corpus_charge = Corpus.load(
+    filename="corpus.csv",
+    name="Climate chargé",
+)
+
+print(corpus_charge)
+corpus_charge.display()
+corpus.display_by_date(10)
+corpus.display_by_title(10)
 
 # Quelques statistiques par auteur
 
