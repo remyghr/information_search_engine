@@ -18,3 +18,9 @@ class Author:
         print("Production:")
         for identifiant, document in self.production.items():
             print(f"  ID: {identifiant}, Document: {document.title}")
+
+    def average_document_length(self):
+        if self.ndoc == 0:
+            return 0
+        total_length = sum(len(doc.text) for doc in self.production.values())
+        return total_length / self.ndoc
