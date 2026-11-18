@@ -8,26 +8,36 @@ import pandas as pd
 
 from Document import Document
 from datetime import datetime
+from Author import Author
 
 ### Partie 1 : chargement des données
 
 # la thématique choisie, à modifier librement
 theme = "climate"
 id2doc = {}
+id2aut = {}
 next_id = 0
 
 if os.path.exists("corpus.csv"):
     df = pd.read_csv("corpus.csv", sep="\t")
     for _, ligne in df.iterrows():
+        identifiant = int(ligne["id"])
         document = Document(
-            title="",
-            author="Auteur inconnu",
-            date="",
-            url="",
+            title=str(ligne["titre"]),
+            author=str(ligne["auteur"]),
+            date=str(ligne["date"]),
+            url=str(ligne["url"]),
             text=str(ligne["texte"]),
         )
-        id2doc[next_id] = document
-        next_id += 1
+        id2doc[identifiant] = document
+        for nom_auteur in document.author.split(","):
+            nom_auteur = nom_auteur.strip()
+
+            if nom_auteur and nom_auteur != "Auteur inconnu":
+                if nom_auteur not in id2aut:
+                    id2aut[nom_auteur] = Author(nom_auteur)
+
+                id2aut[nom_auteur].add(identifiant, document)
 else:
     # Partie 1.1 : récupération des données Hacker News
     url_hn = "https://hn.algolia.com/api/v1/search?" + urllib.parse.urlencode({
@@ -59,8 +69,13 @@ else:
             url,
             texte,
         )
+        identifiant = next_id
+        id2doc[identifiant] = document
 
-        id2doc[next_id] = document
+        if auteur:
+            if auteur not in id2aut:
+                id2aut[auteur] = Author(auteur)
+            id2aut[auteur].add(identifiant, document)
         next_id += 1
 
     # Partie 1.2 : récupération des données Arxiv
@@ -100,7 +115,14 @@ else:
             url,
             texte,
         )
-        id2doc[next_id] = document
+        identifiant = next_id
+        id2doc[identifiant] = document
+        for nom_auteur in auteur.split(","):
+            nom_auteur = nom_auteur.strip()
+            if nom_auteur:
+                if nom_auteur not in id2aut:
+                    id2aut[nom_auteur] = Author(nom_auteur)
+                id2aut[nom_auteur].add(identifiant, document)
         next_id += 1
 
 
@@ -148,11 +170,14 @@ else:
 
 # 3.1
 print("Nombre de documents :", len(id2doc))
+print("Nombre d'auteurs :", len(id2aut))
 
-premier_document = id2doc[0]
+premier_document = next(iter(id2doc.values()))
 premier_document.display()
 
 print(premier_document)
+for nom_auteur, auteur in id2aut.items():
+    print(nom_auteur, "-", auteur.ndoc, "document(s)")
 
 # 3.2
 for document in id2doc.values():
@@ -175,3 +200,16 @@ chaine = " ".join(
     document.text
     for document in id2doc.values()
 )
+
+# Quelques statistiques par auteur
+
+nom = input("Entrez le nom d'un auteur : ").strip()
+
+if nom in id2aut:
+    auteur = id2aut[nom]
+
+    print("Nombre de documents :", auteur.ndoc)
+    print("Taille moyenne :", auteur.average_document_length())
+else:
+    print("Auteur inconnu.")
+
