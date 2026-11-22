@@ -6,7 +6,7 @@ import urllib.parse
 import xmltodict
 import pandas as pd
 
-from Document import Document
+from Document import DocumentFactory
 from datetime import datetime
 from Author import Author
 from Corpus import Corpus
@@ -19,17 +19,71 @@ id2doc = {}
 id2aut = {}
 next_id = 0
 
+def ajouter_document(document, auteurs):
+    global next_id
+
+    identifiant = next_id
+    id2doc[identifiant] = document
+    next_id += 1
+
+    for nom_auteur in auteurs:
+        nom_auteur = nom_auteur.strip()
+
+        if nom_auteur:
+            if nom_auteur not in id2aut:
+                id2aut[nom_auteur] = Author(nom_auteur)
+
+            id2aut[nom_auteur].add(identifiant, document)
+
 if os.path.exists("corpus.csv"):
     df = pd.read_csv("corpus.csv", sep="\t")
     for _, ligne in df.iterrows():
         identifiant = int(ligne["id"])
-        document = Document(
-            title=str(ligne["titre"]),
-            author=str(ligne["auteur"]),
-            date=str(ligne["date"]),
-            url=str(ligne["url"]),
-            text=str(ligne["texte"]),
-        )
+        source = str(ligne.get("source", "Document"))
+        if source == "Hacker News":
+            document = DocumentFactory.create(
+                source="hackernews",
+                title=str(ligne["titre"]),
+                author=str(ligne["auteur"]),
+                date=str(ligne["date"]),
+                url=str(ligne["url"]),
+                text=str(ligne["texte"]),
+                nb_comments=int(ligne.get("nb_comments", 0))
+            )
+        elif source == "Arxiv":
+            coauthors = str(ligne.get("coauthors", ""))
+
+            if coauthors and coauthors != "nan":
+                liste_auteurs = [
+                    auteur.strip()
+                    for auteur in coauthors.split(" | ")
+                    if auteur.strip()
+                ]
+            else:
+                liste_auteurs = [
+                    auteur.strip()
+                    for auteur in str(ligne["auteur"]).split(",")
+                    if auteur.strip()
+                ]
+
+            document = DocumentFactory.create(
+                "arxiv",
+                str(ligne["titre"]),
+                str(ligne["auteur"]),
+                str(ligne["date"]),
+                str(ligne["url"]),
+                str(ligne["texte"]),
+                coauthors=liste_auteurs,
+            )
+        else:
+            document = DocumentFactory.create(
+                "document",
+                str(ligne["titre"]),
+                str(ligne["auteur"]),
+                str(ligne["date"]),
+                str(ligne["url"]),
+                str(ligne["texte"]),
+            )
         id2doc[identifiant] = document
         for nom_auteur in document.author.split(","):
             nom_auteur = nom_auteur.strip()
@@ -62,32 +116,43 @@ else:
         auteur = hit.get("author", "Auteur inconnu")
         date = hit.get("created_at", "")
         url = hit.get("story_url") or hit.get("url") or ""
+        nb_comments = hit.get("num_comments", 0)
 
-        document = Document(
+        document = DocumentFactory.create(
+            "hackernews",
             titre,
             auteur,
             date,
             url,
             texte,
+            nb_comments=nb_comments,
         )
-        identifiant = next_id
-        id2doc[identifiant] = document
 
-        if auteur:
-            if auteur not in id2aut:
-                id2aut[auteur] = Author(auteur)
-            id2aut[auteur].add(identifiant, document)
-        next_id += 1
+        ajouter_document(document, [auteur] if auteur else [])
 
     # Partie 1.2 : récupération des données Arxiv
     url_arxiv = "http://export.arxiv.org/api/query?" + urllib.parse.urlencode({
         "search_query": "all:" + theme,
         "start": 0,
-        "max_results": 50,
+        "max_results": 10,
     })
 
-    with urllib.request.urlopen(url_arxiv) as reponse:
-        d_arxiv = xmltodict.parse(reponse.read())
+    try:
+        with urllib.request.urlopen(url_arxiv) as reponse:
+            d_arxiv = xmltodict.parse(reponse.read())
+
+    except urllib.error.HTTPError as erreur:
+        if erreur.code == 429:
+            print("Arxiv a refusé la requête : HTTP 429")
+
+            retry_after = erreur.headers.get("Retry-After")
+
+            if retry_after:
+                print("Retry-After :", retry_after)
+            else:
+                print("Arxiv n'a fourni aucun Retry-After.")
+
+        raise
 
     entrees = d_arxiv["feed"].get("entry", [])
     if isinstance(entrees, dict):
@@ -98,34 +163,32 @@ else:
         texte = entree.get("summary", "").replace("\n", " ").strip()
         date = entree.get("published", "")
         url = entree.get("id", "")
-        auteur_xml = entree.get("author", "")
-        if isinstance(auteur_xml, list):
-            auteur = ", ".join(
-                str(a.get("name", ""))
-                for a in auteur_xml
-                if isinstance(a, dict)
-            )
-        elif isinstance(auteur_xml, dict):
-            auteur = auteur_xml.get("name", "Auteur inconnu")
-        else:
-            auteur = str(auteur_xml or "Auteur inconnu")
-        document = Document(
+        auteur_xml = entree.get("author", [])
+
+        if isinstance(auteur_xml, dict):
+            auteur_xml = [auteur_xml]
+        elif not isinstance(auteur_xml, list):
+            auteur_xml = []
+
+        liste_auteurs = []
+        for auteur_info in auteur_xml:
+            if isinstance(auteur_info, dict):
+                nom = auteur_info.get("name", "").strip()
+
+                if nom:
+                    liste_auteurs.append(nom)
+
+        auteur = ", ".join(liste_auteurs)
+        document = DocumentFactory.create(
+            "arxiv",
             titre,
             auteur,
             date,
             url,
             texte,
+            coauthors=liste_auteurs,
         )
-        identifiant = next_id
-        id2doc[identifiant] = document
-        for nom_auteur in auteur.split(","):
-            nom_auteur = nom_auteur.strip()
-            if nom_auteur:
-                if nom_auteur not in id2aut:
-                    id2aut[nom_auteur] = Author(nom_auteur)
-                id2aut[nom_auteur].add(identifiant, document)
-        next_id += 1
-
+        ajouter_document(document, liste_auteurs)
 
     ### Partie 2 : sauvegarde des données
 
@@ -140,24 +203,25 @@ else:
             "date": document.date,
             "url": document.url,
             "texte": document.text,
+            "source": document.getType(),
         })
 
     df = pd.DataFrame(donnees)
-    print(df.shape)
-    print(df.head())
+    #print(df.shape)
+    #print(df.head())
     df.to_csv("corpus.csv", sep="\t", index=False)
-    print(df.shape)
-    print(df.head())
-    print(df.columns)
+    #print(df.shape)
+    #print(df.head())
+    #print(df.columns)
 
     # 2.2
     # On a pris soin de retirer les sauts de ligne des textes : sans cela, ils
     # casseraient le fichier csv, qui sépare ses lignes avec ce même caractère.
-    df.to_csv("corpus.csv", sep="\t", index=False)
+    #df.to_csv("corpus.csv", sep="\t", index=False)
 
     # 2.3
-    df = pd.read_csv("corpus.csv", sep="\t")
-    print(df.shape)
+    #df = pd.read_csv("corpus.csv", sep="\t")
+    #print(df.shape)
 # En pratique, on encadre la partie 1 par un test de la forme :
 #     import os
 #     if os.path.exists("corpus.csv"):
@@ -204,7 +268,7 @@ chaine = " ".join(
 
 # Creation du corpus
 
-corpus = Corpus("Climate")
+corpus = Corpus.get_instance("Climate")
 
 corpus.id2doc = id2doc
 corpus.authors = id2aut
@@ -221,8 +285,8 @@ corpus_charge = Corpus.load(
 
 print(corpus_charge)
 corpus_charge.display()
-corpus.display_by_date(10)
-corpus.display_by_title(10)
+corpus_charge.display_by_date(10)
+corpus_charge.display_by_title(10)
 
 # Quelques statistiques par auteur
 
