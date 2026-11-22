@@ -10,6 +10,12 @@ Le rendu est demandé en 3 versions qui correspondent, chacune, a une évolution
 - v2 : version qui correspond aux TDs 3 a 7 (avec le moteur de recherche)
 - v3 : version qui correspond aux TDs 3 a 7 + TD 8 a 10 (avec l’interface et l’extension)
 
+## Versions du projet
+
+- v1 : socle de base correspondant aux TD 3 à 5
+- v2 : moteur de recherche correspondant aux TD 3 à 7
+- v3 : moteur de recherche et interface correspondant aux TD 3 à 10
+
 ## How to run 
 
 ```bash
