@@ -19,6 +19,7 @@ id2doc = {}
 id2aut = {}
 next_id = 0
 
+# Ajoute un document au corpus et associe cet identifiant à ses auteurs 
 def ajouter_document(document, auteurs):
     global next_id
 
@@ -35,10 +36,13 @@ def ajouter_document(document, auteurs):
 
             id2aut[nom_auteur].add(identifiant, document)
 
+# Le fichier permet d'éviter de relancer inutilement les API
 if os.path.exists("corpus.csv"):
     df = pd.read_csv("corpus.csv", sep="\t")
     for _, ligne in df.iterrows():
         identifiant = int(ligne["id"])
+
+        # Reconstruit le type spécialisé du document à partir de la source sauvegardée
         source = str(ligne.get("source", "Document"))
         if source == "Hacker News":
             document = DocumentFactory.create(
@@ -105,6 +109,7 @@ else:
         d_hn = json.load(reponse)
 
     for hit in d_hn["hits"]:
+        # Le champ story_text contient le texte ; à défaut, on utilise le titre
         texte = hit.get("story_text")
 
         if not texte:
@@ -116,6 +121,8 @@ else:
         auteur = hit.get("author", "Auteur inconnu")
         date = hit.get("created_at", "")
         url = hit.get("story_url") or hit.get("url") or ""
+
+        # num_comments est propre aux documents Hacker News
         nb_comments = hit.get("num_comments", 0)
 
         document = DocumentFactory.create(
@@ -163,6 +170,8 @@ else:
         texte = entree.get("summary", "").replace("\n", " ").strip()
         date = entree.get("published", "")
         url = entree.get("id", "")
+
+        # xmltodict peut renvoyer un dictionnaire unique ou une liste d'auteurs
         auteur_xml = entree.get("author", [])
 
         if isinstance(auteur_xml, dict):
@@ -170,6 +179,7 @@ else:
         elif not isinstance(auteur_xml, list):
             auteur_xml = []
 
+        # Chaque article peut avoir plusieurs auteurs
         liste_auteurs = []
         for auteur_info in auteur_xml:
             if isinstance(auteur_info, dict):
@@ -193,6 +203,7 @@ else:
     ### Partie 2 : sauvegarde des données
 
     # 2.1
+    # Conserve les métadonnées nécessaires pour reconstruire les objets spécialisés
     donnees = []
 
     for identifiant, document in id2doc.items():
@@ -254,6 +265,7 @@ for document in id2doc.values():
 # 3.3
 # Les documents les plus courts sont les titres récupérés sur Hacker News
 # lorsque le champ story_text était absent.
+# Supprime les documents dont le contenu contient moins de 20 caractères
 id2doc = {
     identifiant: document
     for identifiant, document in id2doc.items()
@@ -267,7 +279,7 @@ chaine = " ".join(
 )
 
 # Creation du corpus
-
+# La classe Corpus utilise les dictionnaires construits précédemment
 corpus = Corpus.get_instance("Climate")
 
 corpus.id2doc = id2doc
@@ -278,6 +290,7 @@ print(corpus)
 corpus.display()
 corpus.save("corpus.csv")
 
+# Recharge le corpus depuis le CSV pour vérifier la chaîne de sauvegarde
 corpus_charge = Corpus.load(
     filename="corpus.csv",
     name="Climate chargé",

@@ -3,6 +3,7 @@ from Document import DocumentFactory
 from Author import Author
 
 class Corpus: 
+    # Instance unique utilisée par le patron Singleton
     instance = None
     def __init__(self, name):
         self.name = name
@@ -13,6 +14,7 @@ class Corpus:
 
     @classmethod
     def get_instance(cls, name="climate"):
+        # Crée le Corpus une seule fois puis renvoie toujours la même instance
         if cls.instance is None:
             cls.instance = cls(name)
         return cls.instance
@@ -25,6 +27,7 @@ class Corpus:
         for author_name, author in self.authors.items():
             print(f"  {author_name}: {author.ndoc} document(s)")
 
+    # Affiche les documents dans l'ordre chronologique
     def display_by_date(self, nombre):
         documents = sorted(
             self.id2doc.values(),
@@ -34,6 +37,7 @@ class Corpus:
         for document in documents[:nombre]:
             print(document.getType(), "-", document.date, "-", document)
 
+    # Affiche les documents sans tenir compte des majuscules
     def display_by_title(self, nombre):
         documents = sorted(
             self.id2doc.values(),
@@ -46,6 +50,7 @@ class Corpus:
     def __repr__(self):
         return f"Corpus(name={self.name}, ndoc={self.ndoc}, naut={self.naut})"
 
+    # Sérialise les métadonnées nécessaires au rechargement des sous-classes
     def save(self, filename="corpus.csv"):
         data = []
         for identifiant, document in self.id2doc.items():
@@ -73,6 +78,7 @@ class Corpus:
         df.to_csv(filename, sep="\t", index=False)
         print("Corpus sauvegardé dans", filename)
 
+    # Reconstruit le corpus, ses auteurs et ses documents spécialisés
     @classmethod
     def load(cls, filename="corpus.csv", name="Corpus"):
         new_corpus = cls.get_instance(name)

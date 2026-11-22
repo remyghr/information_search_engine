@@ -20,6 +20,7 @@ class Document:
     def getType(self):
         return self.type
 
+# Document spécialisé pour les messages issus de Hacker News
 class HackerNewsDocument(Document):
     def __init__(self, title, author, date, url, text, nb_comments):
         super().__init__(title, author, date, url, text)
@@ -38,6 +39,7 @@ class HackerNewsDocument(Document):
     def __str__(self):
         return (f"{self.title} "f"(Hacker News, {self.nb_comments} commentaires)")
 
+# Document spécialisé pour les articles Arxiv
 class ArxivDocument(Document):
     def __init__(self, title, author, date, url, text, coauthors):
         super().__init__(title, author, date, url, text)
@@ -56,6 +58,7 @@ class ArxivDocument(Document):
     def __str__(self):
         return f"{self.title} (Arxiv, co-auteurs: {', '.join(self.coauthors)})"
 
+# Crée automatiquement le bon type de document selon sa source
 class DocumentFactory:
     @staticmethod
     def create(source, title, author, date, url, text, **infos):

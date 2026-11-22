@@ -4,6 +4,7 @@ class Author:
         self.ndoc = 0
         self.production = {}
 
+    # Évite d'ajouter plusieurs fois le même document à la production
     def add(self, identifiant, document):
         if identifiant not in self.production:
             self.production[identifiant] = document
@@ -19,6 +20,7 @@ class Author:
         for identifiant, document in self.production.items():
             print(f"  ID: {identifiant}, Document: {document.title}")
 
+    # Calcule la longueur moyenne des textes produits par l'auteur
     def average_document_length(self):
         if self.ndoc == 0:
             return 0
